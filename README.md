@@ -5,6 +5,14 @@ Android TV / Google TV remote. It's built for one phone, the **Poco F9 Ultra**.
 It talks directly to the TV over the Android TV Remote v2 protocol (ports 6466/6467),
 the same protocol `androidtvremote2` uses.
 
+<p align="center">
+  <img src="docs/screenshots/remote.png" alt="Remote screen" width="200">
+  <img src="docs/screenshots/tv-picker.png" alt="TV picker" width="200">
+  <img src="docs/screenshots/add-tv.png" alt="Add a TV with network discovery" width="200">
+  <img src="docs/screenshots/keyboard.png" alt="Typing to the TV" width="200">
+</p>
+<p align="center"><sub>Remote · TV picker · Add a TV (mDNS discovery) · Typing to the TV</sub></p>
+
 ## Speed and simplicity
 
 - **Opens straight to the remote.** It connects to the last TV used as soon as the app is visible.

@@ -176,11 +176,15 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
 
         AnimatedVisibility(typing) { TextEntry(onSend = { s.text(it); haptics.click() }, onDelete = { key(KeyEvent.KEYCODE_DEL) }) }
 
-        Spacer(Modifier.weight(1f))
-
         val live = Modifier.alpha(if (link == Link.Connected) 1f else 0.45f)
 
-        Column(live, horizontalAlignment = Alignment.CenterHorizontally) {
+        // Everything sits at the bottom (thumb reach). The D-pad takes whatever height is
+        // left, so a smaller phone or the open keyboard shrinks it rather than squashing it.
+        Column(
+            live.weight(1f).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Bottom,
+        ) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 apps.forEach { (name, url) ->
                     PadButton(
@@ -223,9 +227,10 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
 
             Spacer(Modifier.height(18.dp))
 
-            BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                DPad(
-                    size = minOf(maxWidth, 360.dp),
+            BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
+                val padSize = minOf(maxWidth, maxHeight, 360.dp)
+                if (padSize >= 140.dp) DPad(
+                    size = padSize,
                     onArrow = { zone ->
                         key(
                             when (zone) {
