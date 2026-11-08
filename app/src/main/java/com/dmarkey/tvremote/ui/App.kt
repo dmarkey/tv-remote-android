@@ -1,11 +1,15 @@
 package com.dmarkey.tvremote.ui
 
 import android.view.KeyEvent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,6 +45,7 @@ import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.Keyboard
+import androidx.compose.material.icons.rounded.KeyboardHide
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PowerSettingsNew
@@ -143,6 +148,7 @@ fun App(vm: RemoteViewModel, haptics: Haptics) {
 
 // ---------------------------------------------------------------- remote
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
     val link by vm.session.link.collectAsStateWithLifecycle()
@@ -151,6 +157,19 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
     val tvs by vm.tvs.collectAsStateWithLifecycle()
     var typing by remember { mutableStateOf(false) }
     val s = vm.session
+
+    // Leaving typing mode must be obvious: Back closes it (instead of exiting the app),
+    // and so does dismissing the phone keyboard, once it has actually been shown.
+    BackHandler(enabled = typing) { typing = false }
+    val imeVisible = WindowInsets.isImeVisible
+    var imeShown by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible, typing) {
+        when {
+            !typing -> imeShown = false
+            imeVisible -> imeShown = true
+            imeShown -> typing = false
+        }
+    }
 
     fun key(code: Int) { s.key(code); haptics.tick() }
     // Real long press: key down after LONG_PRESS_MS, key up on release.
@@ -165,7 +184,8 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             TvPicker(tv, tvs, link, vm, Modifier.weight(1f))
             IconButton(onClick = { typing = !typing }) {
-                Icon(Icons.Rounded.Keyboard, "Keyboard", tint = if (typing) Palette.accent else Palette.label)
+                if (typing) Icon(Icons.Rounded.KeyboardHide, "Close keyboard", tint = Palette.accent)
+                else Icon(Icons.Rounded.Keyboard, "Type to the TV", tint = Palette.label)
             }
             Spacer(Modifier.width(8.dp))
             PadButton(
