@@ -1,6 +1,6 @@
 # TV Remote (Android)
 
-The phone version of [qt-android-remote](../qt-android-remote): a simple, quick
+The phone version of [qt-android-remote](https://github.com/dmarkey/qt-android-remote): a simple, quick
 Android TV / Google TV remote. It's built for one phone, the **Poco F9 Ultra**.
 It talks directly to the TV over the Android TV Remote v2 protocol (ports 6466/6467),
 the same protocol `androidtvremote2` uses.
