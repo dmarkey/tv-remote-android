@@ -153,6 +153,9 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
     val s = vm.session
 
     fun key(code: Int) { s.key(code); haptics.tick() }
+    // Real long press: key down after LONG_PRESS_MS, key up on release.
+    fun holdStart(code: Int): () -> Unit = { s.key(code, TvSession.START_LONG); haptics.heavy() }
+    fun holdEnd(code: Int): () -> Unit = { s.key(code, TvSession.END_LONG) }
 
     Column(
         Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding().padding(horizontal = 20.dp),
@@ -167,6 +170,8 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
             Spacer(Modifier.width(8.dp))
             PadButton(
                 onPress = { s.key(KeyEvent.KEYCODE_POWER); haptics.heavy() },
+                onLongStart = holdStart(KeyEvent.KEYCODE_POWER), // power menu
+                onLongEnd = holdEnd(KeyEvent.KEYCODE_POWER),
                 modifier = Modifier.size(52.dp),
                 tint = Palette.power,
             ) { Icon(Icons.Rounded.PowerSettingsNew, "Power", tint = Palette.bad) }
@@ -199,7 +204,12 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 RoundKey(Icons.Rounded.FastRewind, "Rewind", repeat = true) { key(KeyEvent.KEYCODE_MEDIA_REWIND) }
-                PadButton(onPress = { key(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) }, modifier = Modifier.size(64.dp)) {
+                PadButton(
+                    onPress = { key(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE) },
+                    onLongStart = holdStart(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE),
+                    onLongEnd = holdEnd(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE),
+                    modifier = Modifier.size(64.dp),
+                ) {
                     Row {
                         Icon(Icons.Rounded.PlayArrow, "Play/pause", Modifier.size(24.dp), tint = Palette.label)
                         Icon(Icons.Rounded.Pause, null, Modifier.size(24.dp), tint = Palette.label)
@@ -216,6 +226,8 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
                     RoundKey(
                         Icons.AutoMirrored.Rounded.VolumeOff, "Mute",
                         tint = if (volume?.muted == true) Palette.warn else Palette.label,
+                        onLongStart = holdStart(KeyEvent.KEYCODE_VOLUME_MUTE),
+                        onLongEnd = holdEnd(KeyEvent.KEYCODE_VOLUME_MUTE),
                     ) { key(KeyEvent.KEYCODE_VOLUME_MUTE) }
                     Text(
                         volume?.let { if (it.muted) "muted" else "${it.level}" } ?: " ",
@@ -229,21 +241,18 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
 
             BoxWithConstraints(Modifier.fillMaxWidth().weight(1f, fill = false), contentAlignment = Alignment.Center) {
                 val padSize = minOf(maxWidth, maxHeight, 360.dp)
+                fun code(zone: Zone) = when (zone) {
+                    Zone.UP -> KeyEvent.KEYCODE_DPAD_UP
+                    Zone.DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
+                    Zone.LEFT -> KeyEvent.KEYCODE_DPAD_LEFT
+                    Zone.RIGHT -> KeyEvent.KEYCODE_DPAD_RIGHT
+                    Zone.OK -> KeyEvent.KEYCODE_DPAD_CENTER
+                }
                 if (padSize >= 140.dp) DPad(
                     size = padSize,
-                    onArrow = { zone ->
-                        key(
-                            when (zone) {
-                                Zone.UP -> KeyEvent.KEYCODE_DPAD_UP
-                                Zone.DOWN -> KeyEvent.KEYCODE_DPAD_DOWN
-                                Zone.LEFT -> KeyEvent.KEYCODE_DPAD_LEFT
-                                else -> KeyEvent.KEYCODE_DPAD_RIGHT
-                            },
-                        )
-                    },
-                    onOk = { s.key(KeyEvent.KEYCODE_DPAD_CENTER); haptics.click() },
-                    onOkLongStart = { s.key(KeyEvent.KEYCODE_DPAD_CENTER, TvSession.START_LONG); haptics.heavy() },
-                    onOkLongEnd = { s.key(KeyEvent.KEYCODE_DPAD_CENTER, TvSession.END_LONG) },
+                    onTap = { zone -> s.key(code(zone)); if (zone == Zone.OK) haptics.click() else haptics.tick() },
+                    onLongStart = { zone -> holdStart(code(zone))() },
+                    onLongEnd = { zone -> holdEnd(code(zone))() },
                 )
             }
 
@@ -251,9 +260,9 @@ private fun RemoteScreen(vm: RemoteViewModel, haptics: Haptics) {
 
             // Back and Home sit lowest: they're what the thumb reaches for most after the D-pad.
             Row(Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                WideKey(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.weight(1f)) { key(KeyEvent.KEYCODE_BACK) }
-                WideKey(Icons.Rounded.Home, "Home", Modifier.weight(1f)) { key(KeyEvent.KEYCODE_HOME) }
-                WideKey(Icons.Rounded.Settings, "Settings", Modifier.weight(1f)) { key(KeyEvent.KEYCODE_SETTINGS) }
+                WideKey(Icons.AutoMirrored.Rounded.ArrowBack, "Back", Modifier.weight(1f), holdStart(KeyEvent.KEYCODE_BACK), holdEnd(KeyEvent.KEYCODE_BACK)) { key(KeyEvent.KEYCODE_BACK) }
+                WideKey(Icons.Rounded.Home, "Home", Modifier.weight(1f), holdStart(KeyEvent.KEYCODE_HOME), holdEnd(KeyEvent.KEYCODE_HOME)) { key(KeyEvent.KEYCODE_HOME) }
+                WideKey(Icons.Rounded.Settings, "Settings", Modifier.weight(1f), holdStart(KeyEvent.KEYCODE_SETTINGS), holdEnd(KeyEvent.KEYCODE_SETTINGS)) { key(KeyEvent.KEYCODE_SETTINGS) }
             }
         }
     }
@@ -265,16 +274,31 @@ private fun RoundKey(
     label: String,
     repeat: Boolean = false,
     tint: Color = Palette.label,
+    onLongStart: (() -> Unit)? = null,
+    onLongEnd: (() -> Unit)? = null,
     onPress: () -> Unit,
 ) {
-    PadButton(onPress = onPress, modifier = Modifier.size(64.dp), repeat = repeat) {
+    PadButton(
+        onPress = onPress, modifier = Modifier.size(64.dp), repeat = repeat,
+        onLongStart = onLongStart, onLongEnd = onLongEnd,
+    ) {
         Icon(icon, label, Modifier.size(28.dp), tint = tint)
     }
 }
 
 @Composable
-private fun WideKey(icon: ImageVector, label: String, modifier: Modifier, onPress: () -> Unit) {
-    PadButton(onPress = onPress, modifier = modifier.height(60.dp), shape = RoundedCornerShape(30.dp)) {
+private fun WideKey(
+    icon: ImageVector,
+    label: String,
+    modifier: Modifier,
+    onLongStart: () -> Unit,
+    onLongEnd: () -> Unit,
+    onPress: () -> Unit,
+) {
+    PadButton(
+        onPress = onPress, modifier = modifier.height(60.dp), shape = RoundedCornerShape(30.dp),
+        onLongStart = onLongStart, onLongEnd = onLongEnd,
+    ) {
         Icon(icon, label, Modifier.size(28.dp), tint = Palette.label)
     }
 }

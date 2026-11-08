@@ -41,9 +41,16 @@ import kotlin.math.hypot
 private const val REPEAT_AFTER_MS = 380L
 private const val REPEAT_EVERY_MS = 85L
 
+/** Hold this long and a key becomes a TV long press (same as the desktop app's 300 ms, plus slack for thumbs). */
+const val LONG_PRESS_MS = 350L
+
 /**
- * A button that fires on touch-down (not on release) for zero perceived lag,
- * and, if [repeat], keeps firing while held.
+ * A remote button. Three behaviours:
+ *  - default: fires on touch-down (not release) for zero perceived lag;
+ *  - [repeat]: fires on touch-down, then keeps firing while held;
+ *  - [onLongStart] set: a tap fires [onPress] on release, a hold sends
+ *    [onLongStart] after [LONG_PRESS_MS] and [onLongEnd] on release, i.e. a real
+ *    long press on the TV (Home → app/settings panel, Power → power menu, ...).
  */
 @Composable
 fun PadButton(
@@ -51,26 +58,44 @@ fun PadButton(
     modifier: Modifier = Modifier,
     shape: Shape = CircleShape,
     repeat: Boolean = false,
+    onLongStart: (() -> Unit)? = null,
+    onLongEnd: (() -> Unit)? = null,
     tint: androidx.compose.ui.graphics.Color = Palette.key,
     content: @Composable () -> Unit,
 ) {
     val action by rememberUpdatedState(onPress)
+    val longStart by rememberUpdatedState(onLongStart)
+    val longEnd by rememberUpdatedState(onLongEnd)
+    val hasLong = onLongStart != null
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf(false) }
     Box(
         modifier
             .clip(shape)
             .background(if (pressed) Palette.keyPressed else tint)
-            .pointerInput(repeat) {
+            .pointerInput(repeat, hasLong) {
                 detectTapGestures(onPress = {
                     pressed = true
-                    action()
-                    val repeater = if (repeat) scope.launch {
-                        delay(REPEAT_AFTER_MS)
-                        while (true) { action(); delay(REPEAT_EVERY_MS) }
-                    } else null
-                    tryAwaitRelease()
-                    repeater?.cancel()
+                    if (hasLong) {
+                        var long = false
+                        val timer = scope.launch {
+                            delay(LONG_PRESS_MS)
+                            long = true
+                            longStart?.invoke()
+                        }
+                        val released = tryAwaitRelease()
+                        timer.cancel()
+                        // A finger that slides off without a long press is a cancel, like Android buttons.
+                        if (long) longEnd?.invoke() else if (released) action()
+                    } else {
+                        action()
+                        val repeater = if (repeat) scope.launch {
+                            delay(REPEAT_AFTER_MS)
+                            while (true) { action(); delay(REPEAT_EVERY_MS) }
+                        } else null
+                        tryAwaitRelease()
+                        repeater?.cancel()
+                    }
                     pressed = false
                 })
             },
@@ -81,24 +106,23 @@ fun PadButton(
 enum class Zone { UP, DOWN, LEFT, RIGHT, OK }
 
 /**
- * One big thumb-sized disc: four arrow wedges around an OK button. Arrows fire on
- * touch-down and auto-repeat while held. OK fires on release, or holding it sends
- * a long press (context menus on Google TV).
+ * One big thumb-sized disc: four arrow wedges around an OK button. Every zone
+ * behaves like a physical remote key: a tap fires on release, and holding past
+ * [LONG_PRESS_MS] sends a real long press until release, so the TV does its own
+ * hold behaviour (continuous scrubbing in players, list acceleration, OK context menus).
  */
 @Suppress("DEPRECATION")
 @Composable
 fun DPad(
     size: Dp,
-    onArrow: (Zone) -> Unit,
-    onOk: () -> Unit,
-    onOkLongStart: () -> Unit,
-    onOkLongEnd: () -> Unit,
+    onTap: (Zone) -> Unit,
+    onLongStart: (Zone) -> Unit,
+    onLongEnd: (Zone) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val arrow by rememberUpdatedState(onArrow)
-    val ok by rememberUpdatedState(onOk)
-    val longStart by rememberUpdatedState(onOkLongStart)
-    val longEnd by rememberUpdatedState(onOkLongEnd)
+    val tap by rememberUpdatedState(onTap)
+    val longStart by rememberUpdatedState(onLongStart)
+    val longEnd by rememberUpdatedState(onLongEnd)
     val scope = rememberCoroutineScope()
     var pressed by remember { mutableStateOf<Zone?>(null) }
 
@@ -121,25 +145,16 @@ fun DPad(
                         }
                     }
                     pressed = zone
-                    if (zone == Zone.OK) {
-                        var longSent = false
-                        val timer = scope.launch {
-                            delay(450)
-                            longSent = true
-                            longStart()
-                        }
-                        waitForUpOrCancellation()
-                        timer.cancel()
-                        if (longSent) longEnd() else ok()
-                    } else {
-                        arrow(zone)
-                        val repeater = scope.launch {
-                            delay(REPEAT_AFTER_MS)
-                            while (true) { arrow(zone); delay(REPEAT_EVERY_MS) }
-                        }
-                        waitForUpOrCancellation()
-                        repeater.cancel()
+                    var longSent = false
+                    val timer = scope.launch {
+                        delay(LONG_PRESS_MS)
+                        longSent = true
+                        longStart(zone)
                     }
+                    val up = waitForUpOrCancellation()
+                    timer.cancel()
+                    // A long press always gets its key-up; a short touch that was cancelled sends nothing.
+                    if (longSent) longEnd(zone) else if (up != null) tap(zone)
                     pressed = null
                 }
             },
